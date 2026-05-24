@@ -864,8 +864,12 @@
                 return (confOrder[a.confidence] || 2) - (confOrder[b.confidence] || 2);
             });
 
+            // Build forwarding chain
+            var chain = buildForwardingChain(detections, w, h, fileSize, fileType, joinedStrings, fileName);
+
             analysisData.platformDetections = detections;
-            renderPlatformResults(container, detections, w, h);
+            analysisData.forwardingChain = chain;
+            renderPlatformResults(container, detections, w, h, chain);
         };
         img.src = URL.createObjectURL(currentFile);
     }
@@ -933,13 +937,120 @@
         return details;
     }
 
-    function renderPlatformResults(container, detections, w, h) {
+    function buildForwardingChain(detections, w, h, fileSize, fileType, joinedStrings, fileName) {
+        if (detections.length <= 1) return null;
+
+        var platformNames = detections.map(function (d) { return d.platform; });
+        var chain = [];
+        var hasOriginal = false;
+        var hasEditor = false;
+        var hasMessenger = false;
+        var hasSocialMedia = false;
+
+        // Categorize detected platforms
+        var originals = ['Camera / Original Photo'];
+        var editors = ['Edited (Photoshop/Adobe/GIMP)'];
+        var messengers = ['WhatsApp', 'Telegram', 'Snapchat'];
+        var socialMedia = ['Instagram', 'Facebook', 'Twitter / X', 'Pinterest', 'TikTok', 'Reddit', 'YouTube', 'LinkedIn'];
+
+        detections.forEach(function (d) {
+            if (originals.indexOf(d.platform) !== -1) hasOriginal = true;
+            if (editors.indexOf(d.platform) !== -1) hasEditor = true;
+            if (messengers.indexOf(d.platform) !== -1) hasMessenger = true;
+            if (socialMedia.indexOf(d.platform) !== -1) hasSocialMedia = true;
+        });
+
+        // Build the chain in logical order
+        // 1. Original source (camera)
+        detections.forEach(function (d) {
+            if (originals.indexOf(d.platform) !== -1) {
+                chain.push({ platform: d.platform, icon: d.icon, cssClass: d.cssClass, role: 'Origin', desc: 'Image was originally captured here' });
+            }
+        });
+
+        // 2. Editor (if edited)
+        detections.forEach(function (d) {
+            if (editors.indexOf(d.platform) !== -1) {
+                chain.push({ platform: d.platform, icon: d.icon, cssClass: d.cssClass, role: 'Edited', desc: 'Image was edited/processed' });
+            }
+        });
+
+        // 3. Social media (first upload)
+        detections.forEach(function (d) {
+            if (socialMedia.indexOf(d.platform) !== -1) {
+                chain.push({ platform: d.platform, icon: d.icon, cssClass: d.cssClass, role: 'Uploaded', desc: 'Shared on social media' });
+            }
+        });
+
+        // 4. Messengers (forwarded)
+        detections.forEach(function (d) {
+            if (messengers.indexOf(d.platform) !== -1) {
+                chain.push({ platform: d.platform, icon: d.icon, cssClass: d.cssClass, role: 'Forwarded', desc: 'Forwarded via messenger' });
+            }
+        });
+
+        // If no original/editor detected, add unknown origin
+        if (!hasOriginal && !hasEditor && chain.length > 0) {
+            chain.unshift({ platform: 'Unknown Origin', icon: '?', cssClass: 'unknown', role: 'Origin', desc: 'Original source could not be determined' });
+        }
+
+        // Determine compression analysis
+        var compressionNote = '';
+        if (hasMessenger && fileType === 'image/jpeg') {
+            if (fileSize < 100000) {
+                compressionNote = 'Heavy compression detected — likely forwarded multiple times through messengers. Each forward reduces quality.';
+            } else if (fileSize < 300000) {
+                compressionNote = 'Moderate compression — image was likely forwarded 1-2 times through a messenger platform.';
+            }
+        }
+        if (hasSocialMedia && hasMessenger) {
+            compressionNote += ' Multiple platform traces suggest this image has been shared across social media AND messaging apps.';
+        }
+
+        if (chain.length < 2) return null;
+
+        return {
+            steps: chain,
+            note: compressionNote.trim(),
+            multiForward: detections.length >= 3,
+            platformCount: detections.length
+        };
+    }
+
+    function renderPlatformResults(container, detections, w, h, chain) {
         if (detections.length === 0) {
             container.innerHTML = '<div class="no-data"><div class="icon">🔍</div>No specific platform signatures detected.<br><small>This image may be original or from an unrecognized source. Use the Search tab to find it online.</small></div>';
             return;
         }
 
         var html = '';
+
+        // Forwarding Chain (if multiple platforms detected)
+        if (chain && chain.steps.length >= 2) {
+            html += '<div class="forwarding-chain-section">';
+            html += '<div class="chain-title">Forwarding Chain (Image Journey)</div>';
+            if (chain.multiForward) {
+                html += '<div class="chain-alert">Multi-forward detected! This image passed through ' + chain.platformCount + ' platforms.</div>';
+            }
+            html += '<div class="chain-visual">';
+            chain.steps.forEach(function (step, idx) {
+                html += '<div class="chain-step">';
+                html += '<div class="chain-node ' + step.cssClass + '">' + step.icon + '</div>';
+                html += '<div class="chain-info">';
+                html += '<div class="chain-platform">' + escapeHtml(step.platform) + '</div>';
+                html += '<div class="chain-role">' + escapeHtml(step.role) + '</div>';
+                html += '<div class="chain-desc">' + escapeHtml(step.desc) + '</div>';
+                html += '</div></div>';
+                if (idx < chain.steps.length - 1) {
+                    html += '<div class="chain-arrow">→</div>';
+                }
+            });
+            html += '</div>';
+            if (chain.note) {
+                html += '<div class="chain-note">' + escapeHtml(chain.note) + '</div>';
+            }
+            html += '</div>';
+        }
 
         // Summary bar
         html += '<div class="platform-summary-bar">';
@@ -1331,6 +1442,16 @@
             analysisData.colors.dominantColors.forEach(function (c, i) {
                 lines.push('  ' + (i + 1) + '. ' + rgbToHex(c.r, c.g, c.b) + ' (' + ((c.count / analysisData.colors.pixelCount) * 100).toFixed(1) + '%)');
             });
+            lines.push('');
+        }
+
+        if (analysisData.forwardingChain && analysisData.forwardingChain.steps.length >= 2) {
+            lines.push('── FORWARDING CHAIN ──');
+            var chainStr = analysisData.forwardingChain.steps.map(function (s) { return s.platform + ' (' + s.role + ')'; }).join(' → ');
+            lines.push('  ' + chainStr);
+            if (analysisData.forwardingChain.note) {
+                lines.push('  Note: ' + analysisData.forwardingChain.note);
+            }
             lines.push('');
         }
 
