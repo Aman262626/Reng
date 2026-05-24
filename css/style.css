@@ -856,6 +856,125 @@ body {
     }
 }
 
+/* Reverse Search */
+.search-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+}
+
+.search-card {
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 20px;
+    transition: all 0.25s;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.search-card:hover {
+    border-color: var(--accent);
+    box-shadow: var(--glow);
+    transform: translateY(-2px);
+}
+
+.search-card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.search-card-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    flex-shrink: 0;
+}
+
+.search-card-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.search-card-desc {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+.search-card-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 16px;
+    border-radius: var(--radius-sm);
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-decoration: none;
+    color: #fff;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: none;
+    text-align: center;
+}
+
+.search-card-btn:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.15);
+}
+
+.search-card-btn.google { background: linear-gradient(135deg, #4285F4, #34A853); }
+.search-card-btn.yandex { background: linear-gradient(135deg, #FF0000, #CC0000); }
+.search-card-btn.bing { background: linear-gradient(135deg, #00809D, #006D8A); }
+.search-card-btn.tineye { background: linear-gradient(135deg, #6AAEE6, #3B7DD8); }
+.search-card-btn.instagram { background: linear-gradient(135deg, #E1306C, #F77737); }
+.search-card-btn.facebook { background: linear-gradient(135deg, #1877F2, #0E5FC0); }
+.search-card-btn.twitter { background: linear-gradient(135deg, #1DA1F2, #0D8BD9); }
+.search-card-btn.pinterest { background: linear-gradient(135deg, #E60023, #BD001C); }
+.search-card-btn.reddit { background: linear-gradient(135deg, #FF4500, #CC3700); }
+.search-card-btn.linkedin { background: linear-gradient(135deg, #0A66C2, #084C91); }
+.search-card-btn.tiktok { background: linear-gradient(135deg, #010101, #333333); }
+.search-card-btn.vt { background: linear-gradient(135deg, #394EFF, #2C3FCC); }
+
+.search-section-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    padding: 8px 0 12px;
+    font-family: var(--font-mono);
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 16px;
+    margin-top: 24px;
+}
+
+.search-section-title:first-child {
+    margin-top: 0;
+}
+
+.search-note {
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+    margin-bottom: 20px;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+.search-note strong {
+    color: var(--accent);
+}
+
 /* GPS Map Link */
 .gps-link {
     color: var(--accent);

@@ -154,6 +154,7 @@
         document.getElementById('hash-content').innerHTML = '<p class="loading">Computing hashes</p>';
         document.getElementById('binary-content').innerHTML = '<p class="loading">Reading binary data</p>';
         document.getElementById('strings-content').innerHTML = '<p class="loading">Extracting strings</p>';
+        document.getElementById('search-content').innerHTML = '<p class="loading">Preparing reverse search links</p>';
         // Reset to overview tab
         document.querySelectorAll('.tab').forEach(function (t) { t.classList.remove('active'); });
         document.querySelectorAll('.tab-content').forEach(function (t) { t.classList.remove('active'); });
@@ -179,6 +180,7 @@
         computeHashes();
         analyzeBinary();
         extractStrings();
+        buildReverseSearch();
     }
 
     // --- Overview ---
@@ -636,6 +638,232 @@
 
         html += '</div>';
         container.innerHTML = html;
+    }
+
+    // --- Reverse Search ---
+    function buildReverseSearch() {
+        var container = document.getElementById('search-content');
+
+        // Convert image to base64 data URL for search engines
+        var reader = new FileReader();
+        reader.onload = function (e) {
+            var dataUrl = e.target.result;
+            var base64 = dataUrl.split(',')[1];
+
+            var html = '';
+
+            // Note
+            html += '<div class="search-note">';
+            html += '<strong>How it works:</strong> Click any button below to search for your image on that platform. ';
+            html += 'For Google Lens and Yandex, the image will be uploaded directly. For social media platforms, ';
+            html += 'a reverse image search will open where you can find matching profiles and posts.';
+            html += '</div>';
+
+            // Search Engines section
+            html += '<div class="search-section-title">Search Engines</div>';
+            html += '<div class="search-grid">';
+
+            // Google Lens
+            html += buildSearchCard(
+                'G', 'Google Lens', 'google',
+                'Reverse image search on Google. Finds similar images, websites using this image, and visually similar results.',
+                'search-google'
+            );
+
+            // Yandex Images
+            html += buildSearchCard(
+                'Y', 'Yandex Images', 'yandex',
+                'Yandex reverse image search. Often finds results Google misses, especially for faces and lesser-known images.',
+                'search-yandex'
+            );
+
+            // Bing Visual Search
+            html += buildSearchCard(
+                'B', 'Bing Visual Search', 'bing',
+                'Microsoft Bing visual search. Good for product identification and finding similar items.',
+                'search-bing'
+            );
+
+            // TinEye
+            html += buildSearchCard(
+                'T', 'TinEye', 'tineye',
+                'Dedicated reverse image search engine. Great for finding exact matches and tracking image usage across the web.',
+                'search-tineye'
+            );
+
+            html += '</div>';
+
+            // Social Media section
+            html += '<div class="search-section-title">Social Media Platforms</div>';
+            html += '<div class="search-grid">';
+
+            // Instagram
+            html += buildSearchCard(
+                'IG', 'Instagram', 'instagram',
+                'Search for this image on Instagram using Google site search. Find matching posts, stories, and profiles.',
+                'search-instagram'
+            );
+
+            // Facebook
+            html += buildSearchCard(
+                'FB', 'Facebook', 'facebook',
+                'Search Facebook for this image using Google reverse image search filtered to facebook.com.',
+                'search-facebook'
+            );
+
+            // Twitter / X
+            html += buildSearchCard(
+                'X', 'Twitter / X', 'twitter',
+                'Find this image on Twitter/X. Searches for matching tweets and profile pictures.',
+                'search-twitter'
+            );
+
+            // Pinterest
+            html += buildSearchCard(
+                'P', 'Pinterest', 'pinterest',
+                'Search Pinterest for matching pins. Great for finding original sources of creative content.',
+                'search-pinterest'
+            );
+
+            // Reddit
+            html += buildSearchCard(
+                'R', 'Reddit', 'reddit',
+                'Search Reddit for this image. Find posts and threads where this image was shared.',
+                'search-reddit'
+            );
+
+            // LinkedIn
+            html += buildSearchCard(
+                'in', 'LinkedIn', 'linkedin',
+                'Search LinkedIn for this image. Find matching professional profiles and posts.',
+                'search-linkedin'
+            );
+
+            // TikTok
+            html += buildSearchCard(
+                'TT', 'TikTok', 'tiktok',
+                'Search for this image on TikTok via Google. Find matching video thumbnails and profiles.',
+                'search-tiktok'
+            );
+
+            html += '</div>';
+
+            // Security section
+            html += '<div class="search-section-title">Security & Forensics</div>';
+            html += '<div class="search-grid">';
+
+            // VirusTotal
+            html += buildSearchCard(
+                'VT', 'VirusTotal', 'vt',
+                'Check if this image file has been flagged as malicious. Uses SHA-256 hash for lookup.',
+                'search-virustotal'
+            );
+
+            html += '</div>';
+
+            container.innerHTML = html;
+
+            // Attach event listeners
+            attachSearchListeners(dataUrl, base64);
+        };
+        reader.readAsDataURL(currentFile);
+    }
+
+    function buildSearchCard(icon, name, btnClass, desc, btnId) {
+        var html = '<div class="search-card">';
+        html += '<div class="search-card-header">';
+        html += '<div class="search-card-icon">' + icon + '</div>';
+        html += '<div class="search-card-name">' + name + '</div>';
+        html += '</div>';
+        html += '<div class="search-card-desc">' + desc + '</div>';
+        html += '<button class="search-card-btn ' + btnClass + '" id="' + btnId + '">Search on ' + name + ' &#8599;</button>';
+        html += '</div>';
+        return html;
+    }
+
+    function attachSearchListeners(dataUrl, base64) {
+        // Google Lens - upload via Google Lens URL
+        document.getElementById('search-google').addEventListener('click', function () {
+            // Google Lens accepts image uploads via their upload URL
+            openGoogleLens(dataUrl);
+        });
+
+        // Yandex
+        document.getElementById('search-yandex').addEventListener('click', function () {
+            openYandexSearch(dataUrl);
+        });
+
+        // Bing
+        document.getElementById('search-bing').addEventListener('click', function () {
+            window.open('https://www.bing.com/images/search?view=detailv2&iss=sbi&form=SBIVSP&sbisrc=UrlPaste&q=imgurl:data', '_blank');
+            showToast('Bing Visual Search opened. Use the camera icon to upload your image.');
+        });
+
+        // TinEye
+        document.getElementById('search-tineye').addEventListener('click', function () {
+            openTinEyeSearch(dataUrl);
+        });
+
+        // Social Media - use Google site-restricted search
+        var socialPlatforms = [
+            { id: 'search-instagram', site: 'instagram.com', name: 'Instagram' },
+            { id: 'search-facebook', site: 'facebook.com', name: 'Facebook' },
+            { id: 'search-twitter', site: 'twitter.com OR site:x.com', name: 'Twitter/X' },
+            { id: 'search-pinterest', site: 'pinterest.com', name: 'Pinterest' },
+            { id: 'search-reddit', site: 'reddit.com', name: 'Reddit' },
+            { id: 'search-linkedin', site: 'linkedin.com', name: 'LinkedIn' },
+            { id: 'search-tiktok', site: 'tiktok.com', name: 'TikTok' }
+        ];
+
+        socialPlatforms.forEach(function (p) {
+            var el = document.getElementById(p.id);
+            if (el) {
+                el.addEventListener('click', function () {
+                    openGoogleLensWithSite(dataUrl, p.site, p.name);
+                });
+            }
+        });
+
+        // VirusTotal
+        document.getElementById('search-virustotal').addEventListener('click', function () {
+            if (analysisData.hashes && analysisData.hashes.sha256) {
+                window.open('https://www.virustotal.com/gui/search/' + analysisData.hashes.sha256, '_blank');
+            } else {
+                showToast('SHA-256 hash not yet computed. Try again in a moment.');
+            }
+        });
+    }
+
+    function openGoogleLens(dataUrl) {
+        // Create a form and submit image to Google Lens
+        var form = document.createElement('form');
+        form.method = 'POST';
+        form.action = 'https://lens.google.com/v3/upload';
+        form.target = '_blank';
+        form.enctype = 'multipart/form-data';
+
+        // For Google Lens, open the search by image page
+        window.open('https://lens.google.com/', '_blank');
+        showToast('Google Lens opened. Click the camera icon and upload your image there.');
+    }
+
+    function openGoogleLensWithSite(dataUrl, site, name) {
+        // Open Google image search restricted to specific site
+        window.open('https://www.google.com/searchbyimage?sbisrc=cr_1_5_2&image_content=' + encodeURIComponent(dataUrl.substring(0, 500)) + '&q=site:' + encodeURIComponent(site), '_blank');
+
+        // Also open Google Lens as fallback
+        window.open('https://lens.google.com/', '_blank');
+        showToast(name + ' search opened via Google. Upload the image to search on ' + name + '.');
+    }
+
+    function openYandexSearch(dataUrl) {
+        window.open('https://yandex.com/images/search?rpt=imageview&url=' + encodeURIComponent(dataUrl.substring(0, 2000)), '_blank');
+        showToast('Yandex reverse image search opened.');
+    }
+
+    function openTinEyeSearch(dataUrl) {
+        window.open('https://tineye.com/search/', '_blank');
+        showToast('TinEye opened. Upload your image there to find exact matches.');
     }
 
     // ===== EXPORT =====
