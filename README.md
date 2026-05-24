@@ -14,6 +14,7 @@ A powerful, fully client-side image reverse engineering tool. Upload any image a
 | 🔐 **Hash Generation** | MD5, SHA-1, SHA-256 hashes with copy button + VirusTotal reverse search link |
 | 🔢 **Binary/Hex Dump** | Magic bytes detection, file structure description, hex dump viewer |
 | 📝 **String Extraction** | All readable ASCII strings found in the binary with byte offsets |
+| 🔍 **Reverse Search** | Search image on Google, Yandex, Bing, TinEye, Instagram, Facebook, Twitter/X, Pinterest, Reddit, LinkedIn, TikTok, VirusTotal |
 | 📥 **Export** | Download full report as JSON or plain text |
 
 ## How to Use
