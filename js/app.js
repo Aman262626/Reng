@@ -155,6 +155,7 @@
         document.getElementById('binary-content').innerHTML = '<p class="loading">Reading binary data</p>';
         document.getElementById('strings-content').innerHTML = '<p class="loading">Extracting strings</p>';
         document.getElementById('search-content').innerHTML = '<p class="loading">Preparing reverse search links</p>';
+        document.getElementById('platform-content').innerHTML = '<p class="loading">Analyzing image for platform signatures</p>';
         // Reset to overview tab
         document.querySelectorAll('.tab').forEach(function (t) { t.classList.remove('active'); });
         document.querySelectorAll('.tab-content').forEach(function (t) { t.classList.remove('active'); });
@@ -180,6 +181,7 @@
         computeHashes();
         analyzeBinary();
         extractStrings();
+        detectPlatform();
         buildReverseSearch();
     }
 
@@ -640,6 +642,351 @@
         container.innerHTML = html;
     }
 
+    // --- Platform Detection ---
+    function detectPlatform() {
+        var container = document.getElementById('platform-content');
+        var bytes = new Uint8Array(currentArrayBuffer);
+        var allStrings = extractAllStrings(bytes, 3);
+        var joinedStrings = allStrings.map(function (s) { return s.value; }).join(' ');
+        var fileName = analysisData.fileName || '';
+        var fileSize = analysisData.fileSize || 0;
+        var fileType = analysisData.fileType || '';
+
+        var img = new Image();
+        img.onload = function () {
+            var w = img.naturalWidth;
+            var h = img.naturalHeight;
+            var detections = [];
+
+            // --- Instagram Detection ---
+            var instaEvidence = [];
+            if (joinedStrings.match(/instagram/i)) instaEvidence.push('String "Instagram" found in binary');
+            if (fileName.match(/^\d+_\d+_\d+_\d+_\d+_n\./i)) instaEvidence.push('Instagram filename pattern (fbid format)');
+            if (fileName.match(/^(IMG|VID)_\d{8}_\d{6}/)) instaEvidence.push('Mobile camera naming (common Instagram source)');
+            if (w === 1080 && h === 1080) instaEvidence.push('Square 1080×1080 (Instagram post size)');
+            if (w === 1080 && h === 1350) instaEvidence.push('Portrait 1080×1350 (Instagram portrait)');
+            if (w === 1080 && h === 608) instaEvidence.push('Landscape 1080×608 (Instagram landscape)');
+            if (w === 1080 && h === 1920) instaEvidence.push('Story 1080×1920 (Instagram/FB story)');
+            if (joinedStrings.match(/Insta(gram)?/i) && !joinedStrings.match(/instagram\.com/i)) instaEvidence.push('Embedded Instagram metadata');
+            if (instaEvidence.length > 0) {
+                detections.push({
+                    platform: 'Instagram', cssClass: 'instagram', icon: 'IG',
+                    confidence: instaEvidence.length >= 2 ? 'high' : 'medium',
+                    evidence: instaEvidence,
+                    details: buildPlatformDetails(w, h, fileSize, fileType, joinedStrings, 'Instagram')
+                });
+            }
+
+            // --- Facebook Detection ---
+            var fbEvidence = [];
+            if (joinedStrings.match(/facebook/i)) fbEvidence.push('String "Facebook" found in binary');
+            if (fileName.match(/^\d+_\d+_\d+_n\./)) fbEvidence.push('Facebook CDN filename pattern');
+            if (fileName.match(/^FB_IMG_/i)) fbEvidence.push('Facebook image download naming');
+            if (joinedStrings.match(/FBMD/i)) fbEvidence.push('Facebook metadata marker (FBMD)');
+            if (joinedStrings.match(/FBAN/i)) fbEvidence.push('Facebook app marker (FBAN)');
+            if (joinedStrings.match(/fbcdn/i)) fbEvidence.push('Facebook CDN reference');
+            var fbSizes = [[720,720],[960,960],[2048,2048],[851,315]];
+            fbSizes.forEach(function (s) {
+                if (w === s[0] && h === s[1]) fbEvidence.push('Facebook standard size ' + w + '×' + h);
+            });
+            if (fbEvidence.length > 0) {
+                detections.push({
+                    platform: 'Facebook', cssClass: 'facebook', icon: 'FB',
+                    confidence: fbEvidence.length >= 2 ? 'high' : 'medium',
+                    evidence: fbEvidence,
+                    details: buildPlatformDetails(w, h, fileSize, fileType, joinedStrings, 'Facebook')
+                });
+            }
+
+            // --- Twitter/X Detection ---
+            var twEvidence = [];
+            if (joinedStrings.match(/twitter/i)) twEvidence.push('String "Twitter" found in binary');
+            if (fileName.match(/^(E|F|G)[A-Za-z0-9_-]{13}\./)) twEvidence.push('Twitter media ID pattern');
+            if (fileName.match(/media\/F/)) twEvidence.push('Twitter media URL pattern');
+            if (joinedStrings.match(/tweetdeck|tweetbot/i)) twEvidence.push('Twitter client marker');
+            var twSizes = [[1200,675],[1200,1200],[1500,500],[800,418],[400,400]];
+            twSizes.forEach(function (s) {
+                if (w === s[0] && h === s[1]) twEvidence.push('Twitter standard size ' + w + '×' + h);
+            });
+            if (twEvidence.length > 0) {
+                detections.push({
+                    platform: 'Twitter / X', cssClass: 'twitter', icon: 'X',
+                    confidence: twEvidence.length >= 2 ? 'high' : 'medium',
+                    evidence: twEvidence,
+                    details: buildPlatformDetails(w, h, fileSize, fileType, joinedStrings, 'Twitter')
+                });
+            }
+
+            // --- WhatsApp Detection ---
+            var waEvidence = [];
+            if (joinedStrings.match(/whatsapp/i)) waEvidence.push('String "WhatsApp" found in binary');
+            if (fileName.match(/^IMG-\d{8}-WA\d{4}/)) waEvidence.push('WhatsApp image naming (IMG-date-WAnnnn)');
+            if (fileName.match(/^VID-\d{8}-WA\d{4}/)) waEvidence.push('WhatsApp video naming');
+            if (fileType === 'image/jpeg' && fileSize < 100000 && w <= 1600) waEvidence.push('WhatsApp-style JPEG compression (small file)');
+            if (w === 1600 && h === 1200) waEvidence.push('WhatsApp standard resize 1600×1200');
+            if (joinedStrings.match(/WHATSAPP/i)) waEvidence.push('WhatsApp embedded metadata');
+            if (waEvidence.length > 0) {
+                detections.push({
+                    platform: 'WhatsApp', cssClass: 'whatsapp', icon: 'WA',
+                    confidence: waEvidence.length >= 2 ? 'high' : 'medium',
+                    evidence: waEvidence,
+                    details: buildPlatformDetails(w, h, fileSize, fileType, joinedStrings, 'WhatsApp')
+                });
+            }
+
+            // --- Telegram Detection ---
+            var tgEvidence = [];
+            if (joinedStrings.match(/telegram/i)) tgEvidence.push('String "Telegram" found in binary');
+            if (fileName.match(/^photo_\d{4}-\d{2}-\d{2}/)) tgEvidence.push('Telegram photo naming pattern');
+            if (fileName.match(/^file_\d+/)) tgEvidence.push('Telegram file naming pattern');
+            if (w === 1280 && h === 1280) tgEvidence.push('Telegram max resize 1280×1280');
+            if (tgEvidence.length > 0) {
+                detections.push({
+                    platform: 'Telegram', cssClass: 'telegram', icon: 'TG',
+                    confidence: tgEvidence.length >= 2 ? 'high' : 'medium',
+                    evidence: tgEvidence,
+                    details: buildPlatformDetails(w, h, fileSize, fileType, joinedStrings, 'Telegram')
+                });
+            }
+
+            // --- Snapchat Detection ---
+            var snapEvidence = [];
+            if (joinedStrings.match(/snapchat/i)) snapEvidence.push('String "Snapchat" found in binary');
+            if (w === 1080 && h === 1920) snapEvidence.push('Snap size 1080×1920 (also used by IG Stories)');
+            if (fileName.match(/^Snapchat/i)) snapEvidence.push('Snapchat filename prefix');
+            if (joinedStrings.match(/snap/i) && joinedStrings.match(/Snap Inc/i)) snapEvidence.push('Snap Inc. metadata');
+            if (snapEvidence.length > 0) {
+                detections.push({
+                    platform: 'Snapchat', cssClass: 'snapchat', icon: 'SC',
+                    confidence: snapEvidence.length >= 2 ? 'high' : 'medium',
+                    evidence: snapEvidence,
+                    details: buildPlatformDetails(w, h, fileSize, fileType, joinedStrings, 'Snapchat')
+                });
+            }
+
+            // --- Pinterest Detection ---
+            var pinEvidence = [];
+            if (joinedStrings.match(/pinterest/i)) pinEvidence.push('String "Pinterest" found in binary');
+            if (fileName.match(/^\d{18,}\./)) pinEvidence.push('Pinterest long numeric ID pattern');
+            if (w === 736 || w === 564 || w === 474) pinEvidence.push('Pinterest standard width: ' + w + 'px');
+            if (pinEvidence.length > 0) {
+                detections.push({
+                    platform: 'Pinterest', cssClass: 'pinterest', icon: 'P',
+                    confidence: pinEvidence.length >= 2 ? 'high' : 'medium',
+                    evidence: pinEvidence,
+                    details: buildPlatformDetails(w, h, fileSize, fileType, joinedStrings, 'Pinterest')
+                });
+            }
+
+            // --- TikTok Detection ---
+            var ttEvidence = [];
+            if (joinedStrings.match(/tiktok/i)) ttEvidence.push('String "TikTok" found in binary');
+            if (joinedStrings.match(/musical\.?ly/i)) ttEvidence.push('Musical.ly (old TikTok) marker');
+            if (w === 1080 && h === 1920) ttEvidence.push('TikTok video size 1080×1920');
+            if (fileName.match(/^tiktok/i)) ttEvidence.push('TikTok filename prefix');
+            if (ttEvidence.length > 0) {
+                detections.push({
+                    platform: 'TikTok', cssClass: 'tiktok', icon: 'TT',
+                    confidence: ttEvidence.length >= 2 ? 'high' : 'medium',
+                    evidence: ttEvidence,
+                    details: buildPlatformDetails(w, h, fileSize, fileType, joinedStrings, 'TikTok')
+                });
+            }
+
+            // --- Reddit Detection ---
+            var redditEvidence = [];
+            if (joinedStrings.match(/reddit/i)) redditEvidence.push('String "Reddit" found in binary');
+            if (fileName.match(/^[a-z0-9]{10,13}\./)) redditEvidence.push('Reddit-style short hash filename');
+            if (joinedStrings.match(/redd\.it/i)) redditEvidence.push('Reddit CDN reference (redd.it)');
+            if (redditEvidence.length > 0) {
+                detections.push({
+                    platform: 'Reddit', cssClass: 'reddit', icon: 'R',
+                    confidence: redditEvidence.length >= 2 ? 'high' : 'medium',
+                    evidence: redditEvidence,
+                    details: buildPlatformDetails(w, h, fileSize, fileType, joinedStrings, 'Reddit')
+                });
+            }
+
+            // --- YouTube Detection ---
+            var ytEvidence = [];
+            if (joinedStrings.match(/youtube/i)) ytEvidence.push('String "YouTube" found in binary');
+            var ytSizes = [[1280,720],[1920,1080],[480,360],[640,480],[320,180]];
+            ytSizes.forEach(function (s) {
+                if (w === s[0] && h === s[1]) ytEvidence.push('YouTube thumbnail size ' + w + '×' + h);
+            });
+            if (fileName.match(/^(maxresdefault|hqdefault|mqdefault|sddefault)/)) ytEvidence.push('YouTube thumbnail filename');
+            if (ytEvidence.length > 0) {
+                detections.push({
+                    platform: 'YouTube', cssClass: 'youtube', icon: 'YT',
+                    confidence: ytEvidence.length >= 2 ? 'high' : 'medium',
+                    evidence: ytEvidence,
+                    details: buildPlatformDetails(w, h, fileSize, fileType, joinedStrings, 'YouTube')
+                });
+            }
+
+            // --- Camera / Original Photo Detection ---
+            var camEvidence = [];
+            if (analysisData.exif && Object.keys(analysisData.exif).length > 5) camEvidence.push('Rich EXIF data present (' + Object.keys(analysisData.exif).length + ' tags)');
+            if (analysisData.exif && analysisData.exif.Make) camEvidence.push('Camera: ' + analysisData.exif.Make + ' ' + (analysisData.exif.Model || ''));
+            if (analysisData.exif && analysisData.exif.Software) {
+                camEvidence.push('Software: ' + analysisData.exif.Software);
+            }
+            if (analysisData.gps) camEvidence.push('GPS coordinates present');
+            if (fileSize > 1000000 && fileType === 'image/jpeg') camEvidence.push('Large JPEG (' + formatBytes(fileSize) + ') suggests original photo');
+            if (camEvidence.length > 0) {
+                detections.push({
+                    platform: 'Camera / Original Photo', cssClass: 'camera', icon: '📷',
+                    confidence: camEvidence.length >= 3 ? 'high' : camEvidence.length >= 2 ? 'medium' : 'low',
+                    evidence: camEvidence,
+                    details: buildPlatformDetails(w, h, fileSize, fileType, joinedStrings, 'Camera')
+                });
+            }
+
+            // --- Photoshop Detection ---
+            var psEvidence = [];
+            if (joinedStrings.match(/photoshop/i)) psEvidence.push('String "Photoshop" found in binary');
+            if (joinedStrings.match(/Adobe/i)) psEvidence.push('Adobe software marker');
+            if (joinedStrings.match(/8BIM/)) psEvidence.push('Photoshop 8BIM marker in binary');
+            if (joinedStrings.match(/Lightroom/i)) psEvidence.push('Adobe Lightroom marker');
+            if (joinedStrings.match(/GIMP/i)) psEvidence.push('GIMP editing marker');
+            if (psEvidence.length > 0) {
+                detections.push({
+                    platform: 'Edited (Photoshop/Adobe/GIMP)', cssClass: 'photoshop', icon: 'PS',
+                    confidence: psEvidence.length >= 2 ? 'high' : 'medium',
+                    evidence: psEvidence,
+                    details: buildPlatformDetails(w, h, fileSize, fileType, joinedStrings, 'Photoshop')
+                });
+            }
+
+            // Sort by confidence
+            var confOrder = { high: 0, medium: 1, low: 2 };
+            detections.sort(function (a, b) {
+                return (confOrder[a.confidence] || 2) - (confOrder[b.confidence] || 2);
+            });
+
+            analysisData.platformDetections = detections;
+            renderPlatformResults(container, detections, w, h);
+        };
+        img.src = URL.createObjectURL(currentFile);
+    }
+
+    function extractAllStrings(bytes, minLen) {
+        var strings = [];
+        var current = '';
+        var startOffset = 0;
+        for (var i = 0; i < bytes.length; i++) {
+            var ch = bytes[i];
+            if (ch >= 32 && ch <= 126) {
+                if (current.length === 0) startOffset = i;
+                current += String.fromCharCode(ch);
+            } else {
+                if (current.length >= minLen) strings.push({ offset: startOffset, value: current });
+                current = '';
+            }
+        }
+        if (current.length >= minLen) strings.push({ offset: startOffset, value: current });
+        return strings;
+    }
+
+    function buildPlatformDetails(w, h, fileSize, fileType, joinedStrings, platform) {
+        var details = [];
+        details.push({ label: 'Image Size', value: w + ' × ' + h + ' px' });
+        details.push({ label: 'File Size', value: formatBytes(fileSize) });
+        details.push({ label: 'Format', value: fileType });
+
+        // Extract software info from EXIF
+        if (analysisData.exif) {
+            if (analysisData.exif.Software) details.push({ label: 'Software', value: String(analysisData.exif.Software) });
+            if (analysisData.exif.Make) details.push({ label: 'Device', value: analysisData.exif.Make + ' ' + (analysisData.exif.Model || '') });
+            if (analysisData.exif.DateTimeOriginal) details.push({ label: 'Date Taken', value: String(analysisData.exif.DateTimeOriginal) });
+            if (analysisData.exif.DateTime) details.push({ label: 'Modified Date', value: String(analysisData.exif.DateTime) });
+            if (analysisData.exif.Artist) details.push({ label: 'Artist/Author', value: String(analysisData.exif.Artist) });
+            if (analysisData.exif.Copyright) details.push({ label: 'Copyright', value: String(analysisData.exif.Copyright) });
+        }
+
+        // Extract usernames/handles from strings
+        var handles = [];
+        var handleRegex = /@[a-zA-Z0-9_.]{2,30}/g;
+        var match;
+        while ((match = handleRegex.exec(joinedStrings)) !== null) {
+            if (handles.indexOf(match[0]) === -1) handles.push(match[0]);
+        }
+        if (handles.length > 0) {
+            details.push({ label: 'Usernames Found', value: handles.join(', ') });
+        }
+
+        // Extract URLs
+        var urls = [];
+        var urlRegex = /https?:\/\/[a-zA-Z0-9.\-\/_%?=&#]+/g;
+        while ((match = urlRegex.exec(joinedStrings)) !== null) {
+            if (urls.length < 5 && urls.indexOf(match[0]) === -1) urls.push(match[0]);
+        }
+        if (urls.length > 0) {
+            details.push({ label: 'URLs Found', value: urls.join(' | ') });
+        }
+
+        // GPS if available
+        if (analysisData.gps) {
+            details.push({ label: 'GPS Location', value: analysisData.gps.lat.toFixed(6) + ', ' + analysisData.gps.lon.toFixed(6) });
+        }
+
+        return details;
+    }
+
+    function renderPlatformResults(container, detections, w, h) {
+        if (detections.length === 0) {
+            container.innerHTML = '<div class="no-data"><div class="icon">🔍</div>No specific platform signatures detected.<br><small>This image may be original or from an unrecognized source. Use the Search tab to find it online.</small></div>';
+            return;
+        }
+
+        var html = '';
+
+        // Summary bar
+        html += '<div class="platform-summary-bar">';
+        detections.forEach(function (d) {
+            html += '<div class="summary-chip"><span class="dot ' + d.confidence + '"></span>' + escapeHtml(d.platform) + '</div>';
+        });
+        html += '</div>';
+
+        html += '<div class="platform-results">';
+        detections.forEach(function (d) {
+            html += '<div class="platform-detected ' + d.confidence + '-confidence">';
+
+            // Header
+            html += '<div class="platform-detected-header">';
+            html += '<div class="platform-logo ' + d.cssClass + '">' + d.icon + '</div>';
+            html += '<div class="platform-name-section">';
+            html += '<div class="platform-name">' + escapeHtml(d.platform) + '</div>';
+            html += '<span class="platform-confidence ' + d.confidence + '">' + d.confidence.toUpperCase() + ' CONFIDENCE</span>';
+            html += '</div></div>';
+
+            // Details
+            if (d.details.length > 0) {
+                html += '<div class="platform-details">';
+                d.details.forEach(function (det) {
+                    html += '<div class="platform-detail-item">';
+                    html += '<span class="label">' + escapeHtml(det.label) + '</span>';
+                    html += '<span class="value">' + escapeHtml(det.value) + '</span>';
+                    html += '</div>';
+                });
+                html += '</div>';
+            }
+
+            // Evidence
+            html += '<div class="platform-evidence">';
+            html += '<div class="platform-evidence-title">Detection Evidence</div>';
+            d.evidence.forEach(function (e) {
+                html += '<span class="evidence-tag">' + escapeHtml(e) + '</span>';
+            });
+            html += '</div>';
+
+            html += '</div>';
+        });
+        html += '</div>';
+
+        container.innerHTML = html;
+    }
+
     // --- Reverse Search ---
     function buildReverseSearch() {
         var container = document.getElementById('search-content');
@@ -654,97 +1001,67 @@
 
             // Note
             html += '<div class="search-note">';
-            html += '<strong>How it works:</strong> Click any button below to search for your image on that platform. ';
-            html += 'For Google Lens and Yandex, the image will be uploaded directly. For social media platforms, ';
-            html += 'a reverse image search will open where you can find matching profiles and posts.';
+            html += '<strong>Bina API ke Reverse Search:</strong> Niche diye gaye buttons par click karke directly image upload hogi search engine mein. ';
+            html += 'Google Lens aur Yandex sabse achha kaam karte hain — ye image se matching profiles, posts aur accounts dhundh sakte hain.';
             html += '</div>';
 
             // Search Engines section
-            html += '<div class="search-section-title">Search Engines</div>';
+            html += '<div class="search-section-title">Reverse Image Search Engines</div>';
             html += '<div class="search-grid">';
 
-            // Google Lens
-            html += buildSearchCard(
-                'G', 'Google Lens', 'google',
-                'Reverse image search on Google. Finds similar images, websites using this image, and visually similar results.',
-                'search-google'
-            );
+            html += buildSearchCard('G', 'Google Lens', 'google',
+                'Sabse powerful reverse search. Image upload karo aur Google dhundhega ki ye image kahan kahan hai — social media, websites, sab jagah.',
+                'search-google');
 
-            // Yandex Images
-            html += buildSearchCard(
-                'Y', 'Yandex Images', 'yandex',
-                'Yandex reverse image search. Often finds results Google misses, especially for faces and lesser-known images.',
-                'search-yandex'
-            );
+            html += buildSearchCard('Y', 'Yandex Images', 'yandex',
+                'Google se bhi better for faces! Yandex faces aur people ko bhut achhe se dhundh sakta hai. Best for finding social media profiles.',
+                'search-yandex');
 
-            // Bing Visual Search
-            html += buildSearchCard(
-                'B', 'Bing Visual Search', 'bing',
-                'Microsoft Bing visual search. Good for product identification and finding similar items.',
-                'search-bing'
-            );
+            html += buildSearchCard('B', 'Bing Visual Search', 'bing',
+                'Microsoft ka visual search. Products aur similar images dhundhne ke liye achha hai.',
+                'search-bing');
 
-            // TinEye
-            html += buildSearchCard(
-                'T', 'TinEye', 'tineye',
-                'Dedicated reverse image search engine. Great for finding exact matches and tracking image usage across the web.',
-                'search-tineye'
-            );
+            html += buildSearchCard('T', 'TinEye', 'tineye',
+                'Exact match dhundhta hai — kahan kahan ye image use hui hai web par. Oldest match bhi dikha sakta hai.',
+                'search-tineye');
 
             html += '</div>';
 
             // Social Media section
-            html += '<div class="search-section-title">Social Media Platforms</div>';
+            html += '<div class="search-section-title">Social Media Search (via Google)</div>';
+            html += '<div class="search-note">';
+            html += 'Ye buttons Google reverse image search use karte hain specific social media sites par filter karke. ';
+            html += 'Sabse achha result ke liye pehle Google Lens ya Yandex try karo.';
+            html += '</div>';
             html += '<div class="search-grid">';
 
-            // Instagram
-            html += buildSearchCard(
-                'IG', 'Instagram', 'instagram',
-                'Search for this image on Instagram using Google site search. Find matching posts, stories, and profiles.',
-                'search-instagram'
-            );
+            html += buildSearchCard('IG', 'Instagram', 'instagram',
+                'Instagram par ye image dhundho. Posts, profiles, aur stories mein search hoga.',
+                'search-instagram');
 
-            // Facebook
-            html += buildSearchCard(
-                'FB', 'Facebook', 'facebook',
-                'Search Facebook for this image using Google reverse image search filtered to facebook.com.',
-                'search-facebook'
-            );
+            html += buildSearchCard('FB', 'Facebook', 'facebook',
+                'Facebook par ye image dhundho. Profile photos, posts aur pages mein search hoga.',
+                'search-facebook');
 
-            // Twitter / X
-            html += buildSearchCard(
-                'X', 'Twitter / X', 'twitter',
-                'Find this image on Twitter/X. Searches for matching tweets and profile pictures.',
-                'search-twitter'
-            );
+            html += buildSearchCard('X', 'Twitter / X', 'twitter',
+                'Twitter/X par ye image dhundho. Tweets aur profile pictures mein search hoga.',
+                'search-twitter');
 
-            // Pinterest
-            html += buildSearchCard(
-                'P', 'Pinterest', 'pinterest',
-                'Search Pinterest for matching pins. Great for finding original sources of creative content.',
-                'search-pinterest'
-            );
+            html += buildSearchCard('P', 'Pinterest', 'pinterest',
+                'Pinterest par matching pins dhundho. Creative content ka original source milega.',
+                'search-pinterest');
 
-            // Reddit
-            html += buildSearchCard(
-                'R', 'Reddit', 'reddit',
-                'Search Reddit for this image. Find posts and threads where this image was shared.',
-                'search-reddit'
-            );
+            html += buildSearchCard('R', 'Reddit', 'reddit',
+                'Reddit par ye image dhundho. Posts aur threads mein search hoga.',
+                'search-reddit');
 
-            // LinkedIn
-            html += buildSearchCard(
-                'in', 'LinkedIn', 'linkedin',
-                'Search LinkedIn for this image. Find matching professional profiles and posts.',
-                'search-linkedin'
-            );
+            html += buildSearchCard('in', 'LinkedIn', 'linkedin',
+                'LinkedIn par ye image dhundho. Professional profiles aur posts mein search hoga.',
+                'search-linkedin');
 
-            // TikTok
-            html += buildSearchCard(
-                'TT', 'TikTok', 'tiktok',
-                'Search for this image on TikTok via Google. Find matching video thumbnails and profiles.',
-                'search-tiktok'
-            );
+            html += buildSearchCard('TT', 'TikTok', 'tiktok',
+                'TikTok par ye image dhundho via Google. Video thumbnails aur profiles mein search hoga.',
+                'search-tiktok');
 
             html += '</div>';
 
@@ -752,18 +1069,13 @@
             html += '<div class="search-section-title">Security & Forensics</div>';
             html += '<div class="search-grid">';
 
-            // VirusTotal
-            html += buildSearchCard(
-                'VT', 'VirusTotal', 'vt',
-                'Check if this image file has been flagged as malicious. Uses SHA-256 hash for lookup.',
-                'search-virustotal'
-            );
+            html += buildSearchCard('VT', 'VirusTotal', 'vt',
+                'Check karo ki ye file malicious hai ya nahi. SHA-256 hash se lookup hoga.',
+                'search-virustotal');
 
             html += '</div>';
 
             container.innerHTML = html;
-
-            // Attach event listeners
             attachSearchListeners(dataUrl, base64);
         };
         reader.readAsDataURL(currentFile);
@@ -782,44 +1094,42 @@
     }
 
     function attachSearchListeners(dataUrl, base64) {
-        // Google Lens - upload via Google Lens URL
+        // Google Lens - direct form POST upload
         document.getElementById('search-google').addEventListener('click', function () {
-            // Google Lens accepts image uploads via their upload URL
-            openGoogleLens(dataUrl);
+            uploadToGoogleLens();
         });
 
-        // Yandex
+        // Yandex - direct form POST upload
         document.getElementById('search-yandex').addEventListener('click', function () {
-            openYandexSearch(dataUrl);
+            uploadToYandex();
         });
 
-        // Bing
+        // Bing Visual Search
         document.getElementById('search-bing').addEventListener('click', function () {
-            window.open('https://www.bing.com/images/search?view=detailv2&iss=sbi&form=SBIVSP&sbisrc=UrlPaste&q=imgurl:data', '_blank');
-            showToast('Bing Visual Search opened. Use the camera icon to upload your image.');
+            uploadToBing();
         });
 
-        // TinEye
+        // TinEye - direct form POST upload
         document.getElementById('search-tineye').addEventListener('click', function () {
-            openTinEyeSearch(dataUrl);
+            uploadToTinEye();
         });
 
-        // Social Media - use Google site-restricted search
+        // Social Media - Google site-restricted reverse image search
         var socialPlatforms = [
-            { id: 'search-instagram', site: 'instagram.com', name: 'Instagram' },
-            { id: 'search-facebook', site: 'facebook.com', name: 'Facebook' },
-            { id: 'search-twitter', site: 'twitter.com OR site:x.com', name: 'Twitter/X' },
-            { id: 'search-pinterest', site: 'pinterest.com', name: 'Pinterest' },
-            { id: 'search-reddit', site: 'reddit.com', name: 'Reddit' },
-            { id: 'search-linkedin', site: 'linkedin.com', name: 'LinkedIn' },
-            { id: 'search-tiktok', site: 'tiktok.com', name: 'TikTok' }
+            { id: 'search-instagram', site: 'site:instagram.com', name: 'Instagram' },
+            { id: 'search-facebook', site: 'site:facebook.com', name: 'Facebook' },
+            { id: 'search-twitter', site: 'site:twitter.com OR site:x.com', name: 'Twitter/X' },
+            { id: 'search-pinterest', site: 'site:pinterest.com', name: 'Pinterest' },
+            { id: 'search-reddit', site: 'site:reddit.com', name: 'Reddit' },
+            { id: 'search-linkedin', site: 'site:linkedin.com', name: 'LinkedIn' },
+            { id: 'search-tiktok', site: 'site:tiktok.com', name: 'TikTok' }
         ];
 
         socialPlatforms.forEach(function (p) {
             var el = document.getElementById(p.id);
             if (el) {
                 el.addEventListener('click', function () {
-                    openGoogleLensWithSite(dataUrl, p.site, p.name);
+                    uploadToGoogleWithSite(p.site, p.name);
                 });
             }
         });
@@ -829,41 +1139,128 @@
             if (analysisData.hashes && analysisData.hashes.sha256) {
                 window.open('https://www.virustotal.com/gui/search/' + analysisData.hashes.sha256, '_blank');
             } else {
-                showToast('SHA-256 hash not yet computed. Try again in a moment.');
+                showToast('SHA-256 hash not computed yet. Please wait.');
             }
         });
     }
 
-    function openGoogleLens(dataUrl) {
-        // Create a form and submit image to Google Lens
+    function uploadToGoogleLens() {
+        // Use Google Lens upload via form POST
         var form = document.createElement('form');
         form.method = 'POST';
+        form.enctype = 'multipart/form-data';
         form.action = 'https://lens.google.com/v3/upload';
         form.target = '_blank';
+
+        var fileField = document.createElement('input');
+        fileField.type = 'file';
+        fileField.name = 'encoded_image';
+        fileField.style.display = 'none';
+
+        // Create a DataTransfer to set the file
+        var dt = new DataTransfer();
+        dt.items.add(currentFile);
+        fileField.files = dt.files;
+
+        form.appendChild(fileField);
+        document.body.appendChild(form);
+        form.submit();
+        document.body.removeChild(form);
+        showToast('Image uploaded to Google Lens! Results will appear in new tab.');
+    }
+
+    function uploadToGoogleWithSite(site, name) {
+        // Google Lens upload + site restriction hint
+        var form = document.createElement('form');
+        form.method = 'POST';
         form.enctype = 'multipart/form-data';
+        form.action = 'https://lens.google.com/v3/upload?ep=gisbubb&hl=en&re=df&vpw=1200&vph=800&q=' + encodeURIComponent(site);
+        form.target = '_blank';
 
-        // For Google Lens, open the search by image page
-        window.open('https://lens.google.com/', '_blank');
-        showToast('Google Lens opened. Click the camera icon and upload your image there.');
+        var fileField = document.createElement('input');
+        fileField.type = 'file';
+        fileField.name = 'encoded_image';
+        fileField.style.display = 'none';
+
+        var dt = new DataTransfer();
+        dt.items.add(currentFile);
+        fileField.files = dt.files;
+
+        form.appendChild(fileField);
+        document.body.appendChild(form);
+        form.submit();
+        document.body.removeChild(form);
+        showToast(name + ' search via Google Lens! Check the results tab.');
     }
 
-    function openGoogleLensWithSite(dataUrl, site, name) {
-        // Open Google image search restricted to specific site
-        window.open('https://www.google.com/searchbyimage?sbisrc=cr_1_5_2&image_content=' + encodeURIComponent(dataUrl.substring(0, 500)) + '&q=site:' + encodeURIComponent(site), '_blank');
+    function uploadToYandex() {
+        var form = document.createElement('form');
+        form.method = 'POST';
+        form.enctype = 'multipart/form-data';
+        form.action = 'https://yandex.com/images/search?rpt=imageview&format=json&request=%7B%22blocks%22%3A%5B%7B%22block%22%3A%22b-page_type_search-by-image__link%22%7D%5D%7D';
+        form.target = '_blank';
 
-        // Also open Google Lens as fallback
-        window.open('https://lens.google.com/', '_blank');
-        showToast(name + ' search opened via Google. Upload the image to search on ' + name + '.');
+        var fileField = document.createElement('input');
+        fileField.type = 'file';
+        fileField.name = 'upfile';
+        fileField.style.display = 'none';
+
+        var dt = new DataTransfer();
+        dt.items.add(currentFile);
+        fileField.files = dt.files;
+
+        form.appendChild(fileField);
+        document.body.appendChild(form);
+        form.submit();
+        document.body.removeChild(form);
+        showToast('Image uploaded to Yandex! Results will show in new tab.');
     }
 
-    function openYandexSearch(dataUrl) {
-        window.open('https://yandex.com/images/search?rpt=imageview&url=' + encodeURIComponent(dataUrl.substring(0, 2000)), '_blank');
-        showToast('Yandex reverse image search opened.');
+    function uploadToBing() {
+        // Bing Visual Search
+        var form = document.createElement('form');
+        form.method = 'POST';
+        form.enctype = 'multipart/form-data';
+        form.action = 'https://www.bing.com/images/search?view=detailv2&iss=sbiupload&FORM=SBIHMP';
+        form.target = '_blank';
+
+        var fileField = document.createElement('input');
+        fileField.type = 'file';
+        fileField.name = 'imageBin';
+        fileField.style.display = 'none';
+
+        var dt = new DataTransfer();
+        dt.items.add(currentFile);
+        fileField.files = dt.files;
+
+        form.appendChild(fileField);
+        document.body.appendChild(form);
+        form.submit();
+        document.body.removeChild(form);
+        showToast('Image uploaded to Bing Visual Search!');
     }
 
-    function openTinEyeSearch(dataUrl) {
-        window.open('https://tineye.com/search/', '_blank');
-        showToast('TinEye opened. Upload your image there to find exact matches.');
+    function uploadToTinEye() {
+        var form = document.createElement('form');
+        form.method = 'POST';
+        form.enctype = 'multipart/form-data';
+        form.action = 'https://tineye.com/search';
+        form.target = '_blank';
+
+        var fileField = document.createElement('input');
+        fileField.type = 'file';
+        fileField.name = 'image';
+        fileField.style.display = 'none';
+
+        var dt = new DataTransfer();
+        dt.items.add(currentFile);
+        fileField.files = dt.files;
+
+        form.appendChild(fileField);
+        document.body.appendChild(form);
+        form.submit();
+        document.body.removeChild(form);
+        showToast('Image uploaded to TinEye! Exact matches will show in new tab.');
     }
 
     // ===== EXPORT =====
@@ -935,6 +1332,20 @@
                 lines.push('  ' + (i + 1) + '. ' + rgbToHex(c.r, c.g, c.b) + ' (' + ((c.count / analysisData.colors.pixelCount) * 100).toFixed(1) + '%)');
             });
             lines.push('');
+        }
+
+        if (analysisData.platformDetections && analysisData.platformDetections.length > 0) {
+            lines.push('── PLATFORM DETECTION ──');
+            analysisData.platformDetections.forEach(function (d) {
+                lines.push('  ' + d.platform + ' [' + d.confidence.toUpperCase() + ']');
+                d.evidence.forEach(function (e) {
+                    lines.push('    - ' + e);
+                });
+                d.details.forEach(function (det) {
+                    lines.push('    ' + det.label + ': ' + det.value);
+                });
+                lines.push('');
+            });
         }
 
         if (analysisData.strings && analysisData.strings.length > 0) {

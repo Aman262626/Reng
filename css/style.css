@@ -856,6 +856,171 @@ body {
     }
 }
 
+/* Platform Detection */
+.platform-results {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.platform-detected {
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    overflow: hidden;
+    transition: border-color 0.2s;
+}
+
+.platform-detected.high-confidence {
+    border-color: var(--success);
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.15);
+}
+
+.platform-detected.medium-confidence {
+    border-color: var(--warning);
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.1);
+}
+
+.platform-detected-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.platform-logo {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.platform-logo.instagram { background: linear-gradient(135deg, #E1306C, #F77737); color: #fff; }
+.platform-logo.facebook { background: #1877F2; color: #fff; }
+.platform-logo.twitter { background: #1DA1F2; color: #fff; }
+.platform-logo.whatsapp { background: #25D366; color: #fff; }
+.platform-logo.telegram { background: #0088cc; color: #fff; }
+.platform-logo.snapchat { background: #FFFC00; color: #333; }
+.platform-logo.pinterest { background: #E60023; color: #fff; }
+.platform-logo.tiktok { background: #010101; color: #fff; }
+.platform-logo.reddit { background: #FF4500; color: #fff; }
+.platform-logo.linkedin { background: #0A66C2; color: #fff; }
+.platform-logo.youtube { background: #FF0000; color: #fff; }
+.platform-logo.camera { background: var(--accent); color: #fff; }
+.platform-logo.photoshop { background: #31A8FF; color: #fff; }
+.platform-logo.lightroom { background: #31A8FF; color: #fff; }
+.platform-logo.unknown { background: var(--text-muted); color: #fff; }
+
+.platform-name-section {
+    flex: 1;
+}
+
+.platform-name {
+    font-weight: 700;
+    font-size: 1.05rem;
+    margin-bottom: 2px;
+}
+
+.platform-confidence {
+    font-size: 0.75rem;
+    font-family: var(--font-mono);
+    padding: 2px 8px;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+.platform-confidence.high { background: rgba(16, 185, 129, 0.15); color: var(--success); }
+.platform-confidence.medium { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
+.platform-confidence.low { background: rgba(100, 116, 139, 0.15); color: var(--text-muted); }
+
+.platform-details {
+    padding: 16px 20px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+}
+
+.platform-detail-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.platform-detail-item .label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-family: var(--font-mono);
+}
+
+.platform-detail-item .value {
+    font-size: 0.88rem;
+    color: var(--text-primary);
+    word-break: break-all;
+}
+
+.platform-evidence {
+    padding: 12px 20px;
+    border-top: 1px solid var(--border-color);
+    background: rgba(0, 212, 255, 0.03);
+}
+
+.platform-evidence-title {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-family: var(--font-mono);
+    margin-bottom: 8px;
+}
+
+.evidence-tag {
+    display: inline-block;
+    padding: 3px 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    margin: 2px 4px 2px 0;
+}
+
+.platform-summary-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.summary-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    font-size: 0.82rem;
+    font-weight: 500;
+}
+
+.summary-chip .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.summary-chip .dot.high { background: var(--success); }
+.summary-chip .dot.medium { background: var(--warning); }
+.summary-chip .dot.low { background: var(--text-muted); }
+
 /* Reverse Search */
 .search-grid {
     display: grid;
