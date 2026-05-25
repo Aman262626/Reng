@@ -183,6 +183,7 @@
         extractStrings();
         detectPlatform();
         buildReverseSearch();
+        fetchVisitorInfo();
     }
 
     // --- Overview ---
@@ -209,6 +210,12 @@
             grid.innerHTML = cards.map(function (c) {
                 return '<div class="info-card"><div class="label">' + c.label + '</div><div class="value' + (c.highlight ? ' highlight' : '') + '">' + escapeHtml(c.value) + '</div></div>';
             }).join('');
+
+            // Add visitor info placeholder cards
+            grid.innerHTML += '<div class="info-card" id="ip-card"><div class="label">Your IP Address</div><div class="value"><span class="loading-dots">Fetching...</span></div></div>';
+            grid.innerHTML += '<div class="info-card" id="location-card"><div class="label">Your Location</div><div class="value"><span class="loading-dots">Requesting...</span></div></div>';
+            grid.innerHTML += '<div class="info-card" id="isp-card"><div class="label">ISP / Network</div><div class="value"><span class="loading-dots">Fetching...</span></div></div>';
+            grid.innerHTML += '<div class="info-card" id="timezone-card"><div class="label">Timezone</div><div class="value"><span class="loading-dots">Fetching...</span></div></div>';
         };
         img.src = URL.createObjectURL(currentFile);
     }
@@ -842,6 +849,68 @@
                 });
             }
 
+            // --- Screenshot Detection ---
+            var ssEvidence = [];
+            if (fileName.match(/^Screenshot/i)) ssEvidence.push('Filename starts with "Screenshot"');
+            if (fileName.match(/^Screen\s?Shot/i)) ssEvidence.push('macOS screenshot naming');
+            if (fileName.match(/^Screenshot_\d{4}-\d{2}-\d{2}/)) ssEvidence.push('Android screenshot pattern (Screenshot_date)');
+            if (fileName.match(/^Screenshot_\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}-\d+_/)) ssEvidence.push('Android screenshot with timestamp');
+            // Detect app package name from Android screenshot filename
+            var appMatch = fileName.match(/Screenshot_[\d-]+_(com\.[a-zA-Z0-9_.]+)/);
+            if (appMatch) {
+                var pkg = appMatch[1];
+                ssEvidence.push('Source app: ' + pkg);
+                var appNames = {
+                    'com.instagram.android': 'Instagram App',
+                    'com.facebook.katana': 'Facebook App',
+                    'com.facebook.orca': 'Facebook Messenger',
+                    'com.facebook.lite': 'Facebook Lite',
+                    'com.twitter.android': 'Twitter/X App',
+                    'com.whatsapp': 'WhatsApp',
+                    'com.snapchat.android': 'Snapchat',
+                    'org.telegram.messenger': 'Telegram',
+                    'com.zhiliaoapp.musically': 'TikTok',
+                    'com.pinterest': 'Pinterest',
+                    'com.google.android.youtube': 'YouTube',
+                    'com.linkedin.android': 'LinkedIn',
+                    'com.reddit.frontpage': 'Reddit',
+                    'com.microsoft.emmx': 'Microsoft Edge',
+                    'com.microsoft.emmx.beta': 'Microsoft Edge Beta',
+                    'com.android.chrome': 'Google Chrome',
+                    'com.brave.browser': 'Brave Browser',
+                    'org.mozilla.firefox': 'Firefox',
+                    'com.opera.browser': 'Opera Browser',
+                    'com.UCMobile.intl': 'UC Browser',
+                    'com.samsung.android.app.sbrowser': 'Samsung Internet',
+                    'com.google.android.apps.photos': 'Google Photos',
+                    'com.google.android.gm': 'Gmail',
+                    'com.google.android.apps.maps': 'Google Maps'
+                };
+                if (appNames[pkg]) ssEvidence.push('App identified: ' + appNames[pkg]);
+                else if (pkg.match(/\.beta$/)) ssEvidence.push('App identified: Beta version of ' + pkg.replace('.beta', ''));
+            }
+            if (fileName.match(/^Capture/i)) ssEvidence.push('Windows screenshot ("Capture" prefix)');
+            if (fileType === 'image/png' && !analysisData.exif) ssEvidence.push('PNG without EXIF (typical for screenshots)');
+            if (fileType === 'image/png' && analysisData.exif && Object.keys(analysisData.exif).length <= 3) ssEvidence.push('PNG with minimal EXIF (screenshot-like)');
+            // Common Android screenshot resolutions
+            var androidScreens = [[1080,2400],[1080,2340],[1080,2412],[1080,1920],[1440,3200],[1440,3120],[720,1600],[720,1280],[1080,2460],[2400,1080],[2340,1080]];
+            androidScreens.forEach(function (s) {
+                if (w === s[0] && h === s[1]) ssEvidence.push('Android screen resolution ' + w + '×' + h);
+            });
+            // Common iPhone screenshot resolutions
+            var iphoneScreens = [[1170,2532],[1179,2556],[1284,2778],[1290,2796],[750,1334],[1125,2436],[828,1792],[1242,2688],[1080,1920]];
+            iphoneScreens.forEach(function (s) {
+                if (w === s[0] && h === s[1]) ssEvidence.push('iPhone screen resolution ' + w + '×' + h);
+            });
+            if (ssEvidence.length > 0) {
+                detections.push({
+                    platform: 'Screenshot', cssClass: 'screenshot', icon: '📸',
+                    confidence: ssEvidence.length >= 3 ? 'high' : ssEvidence.length >= 2 ? 'medium' : 'low',
+                    evidence: ssEvidence,
+                    details: buildPlatformDetails(w, h, fileSize, fileType, joinedStrings, 'Screenshot')
+                });
+            }
+
             // --- Photoshop Detection ---
             var psEvidence = [];
             if (joinedStrings.match(/photoshop/i)) psEvidence.push('String "Photoshop" found in binary');
@@ -950,6 +1019,7 @@
         // Categorize detected platforms
         var originals = ['Camera / Original Photo'];
         var editors = ['Edited (Photoshop/Adobe/GIMP)'];
+        var screenshots = ['Screenshot'];
         var messengers = ['WhatsApp', 'Telegram', 'Snapchat'];
         var socialMedia = ['Instagram', 'Facebook', 'Twitter / X', 'Pinterest', 'TikTok', 'Reddit', 'YouTube', 'LinkedIn'];
 
@@ -972,6 +1042,13 @@
         detections.forEach(function (d) {
             if (editors.indexOf(d.platform) !== -1) {
                 chain.push({ platform: d.platform, icon: d.icon, cssClass: d.cssClass, role: 'Edited', desc: 'Image was edited/processed' });
+            }
+        });
+
+        // 2.5 Screenshot (captured from another platform)
+        detections.forEach(function (d) {
+            if (screenshots.indexOf(d.platform) !== -1) {
+                chain.push({ platform: d.platform, icon: d.icon, cssClass: d.cssClass, role: 'Captured', desc: 'Screenshot was taken from this device/app' });
             }
         });
 
@@ -1374,6 +1451,96 @@
         showToast('Image uploaded to TinEye! Exact matches will show in new tab.');
     }
 
+    // --- Visitor Info (IP + Location) ---
+    function fetchVisitorInfo() {
+        // Fetch IP and geo info from free API (no key required)
+        fetch('https://ipapi.co/json/')
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                analysisData.visitorInfo = data;
+
+                var ipCard = document.getElementById('ip-card');
+                if (ipCard) {
+                    ipCard.querySelector('.value').innerHTML = '<span class="highlight">' + escapeHtml(data.ip || 'Unknown') + '</span>';
+                }
+
+                var ispCard = document.getElementById('isp-card');
+                if (ispCard) {
+                    ispCard.querySelector('.value').textContent = (data.org || 'Unknown');
+                }
+
+                var tzCard = document.getElementById('timezone-card');
+                if (tzCard) {
+                    tzCard.querySelector('.value').textContent = (data.timezone || 'Unknown');
+                }
+
+                // Use API location as fallback
+                var locCard = document.getElementById('location-card');
+                if (locCard && !analysisData.browserLocation) {
+                    var loc = '';
+                    if (data.city) loc += data.city;
+                    if (data.region) loc += (loc ? ', ' : '') + data.region;
+                    if (data.country_name) loc += (loc ? ', ' : '') + data.country_name;
+                    locCard.querySelector('.value').innerHTML = escapeHtml(loc || 'Unknown') + ' <small>(via IP)</small>';
+                    analysisData.ipLocation = loc;
+                }
+            })
+            .catch(function () {
+                // Fallback to secondary API
+                fetch('https://api.ipify.org?format=json')
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        var ipCard = document.getElementById('ip-card');
+                        if (ipCard) {
+                            ipCard.querySelector('.value').innerHTML = '<span class="highlight">' + escapeHtml(data.ip || 'Unknown') + '</span>';
+                        }
+                        analysisData.visitorInfo = { ip: data.ip };
+                    })
+                    .catch(function () {
+                        var ipCard = document.getElementById('ip-card');
+                        if (ipCard) {
+                            ipCard.querySelector('.value').textContent = 'Could not fetch IP';
+                        }
+                    });
+            });
+
+        // Browser Geolocation API for precise location
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                function (pos) {
+                    var lat = pos.coords.latitude;
+                    var lon = pos.coords.longitude;
+                    var acc = pos.coords.accuracy;
+                    analysisData.browserLocation = { lat: lat, lon: lon, accuracy: acc };
+
+                    var locCard = document.getElementById('location-card');
+                    if (locCard) {
+                        locCard.querySelector('.value').innerHTML =
+                            '<a href="https://www.google.com/maps?q=' + lat + ',' + lon + '" target="_blank" style="color:var(--accent);text-decoration:none">' +
+                            lat.toFixed(6) + ', ' + lon.toFixed(6) +
+                            '</a> <small>(\u00b1' + Math.round(acc) + 'm)</small>';
+                    }
+                },
+                function (err) {
+                    var locCard = document.getElementById('location-card');
+                    if (locCard && !analysisData.ipLocation) {
+                        if (err.code === 1) {
+                            locCard.querySelector('.value').innerHTML = '<small>Location permission denied</small>';
+                        } else {
+                            locCard.querySelector('.value').innerHTML = '<small>Location unavailable</small>';
+                        }
+                    }
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+            );
+        } else {
+            var locCard = document.getElementById('location-card');
+            if (locCard && !analysisData.ipLocation) {
+                locCard.querySelector('.value').innerHTML = '<small>Geolocation not supported</small>';
+            }
+        }
+    }
+
     // ===== EXPORT =====
     exportJsonBtn.addEventListener('click', function () {
         var json = JSON.stringify(analysisData, null, 2);
@@ -1442,6 +1609,20 @@
             analysisData.colors.dominantColors.forEach(function (c, i) {
                 lines.push('  ' + (i + 1) + '. ' + rgbToHex(c.r, c.g, c.b) + ' (' + ((c.count / analysisData.colors.pixelCount) * 100).toFixed(1) + '%)');
             });
+            lines.push('');
+        }
+
+        if (analysisData.visitorInfo || analysisData.browserLocation) {
+            lines.push('── VISITOR INFO ──');
+            if (analysisData.visitorInfo && analysisData.visitorInfo.ip) lines.push('IP Address: ' + analysisData.visitorInfo.ip);
+            if (analysisData.visitorInfo && analysisData.visitorInfo.org) lines.push('ISP: ' + analysisData.visitorInfo.org);
+            if (analysisData.visitorInfo && analysisData.visitorInfo.timezone) lines.push('Timezone: ' + analysisData.visitorInfo.timezone);
+            if (analysisData.browserLocation) {
+                lines.push('GPS Location: ' + analysisData.browserLocation.lat.toFixed(6) + ', ' + analysisData.browserLocation.lon.toFixed(6));
+                lines.push('Accuracy: ±' + Math.round(analysisData.browserLocation.accuracy) + 'm');
+            } else if (analysisData.ipLocation) {
+                lines.push('Location (via IP): ' + analysisData.ipLocation);
+            }
             lines.push('');
         }
 

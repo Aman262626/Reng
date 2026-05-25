@@ -914,6 +914,7 @@ body {
 .platform-logo.camera { background: var(--accent); color: #fff; }
 .platform-logo.photoshop { background: #31A8FF; color: #fff; }
 .platform-logo.lightroom { background: #31A8FF; color: #fff; }
+.platform-logo.screenshot { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; }
 .platform-logo.unknown { background: var(--text-muted); color: #fff; }
 
 .platform-name-section {
@@ -1115,6 +1116,7 @@ body {
 .chain-node.youtube { background: #FF0000; }
 .chain-node.camera { background: var(--accent); }
 .chain-node.photoshop { background: #31A8FF; }
+.chain-node.screenshot { background: linear-gradient(135deg, #6366f1, #8b5cf6); }
 .chain-node.unknown { background: var(--text-muted); }
 
 .chain-info {
