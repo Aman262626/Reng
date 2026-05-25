@@ -211,13 +211,137 @@
                 return '<div class="info-card"><div class="label">' + c.label + '</div><div class="value' + (c.highlight ? ' highlight' : '') + '">' + escapeHtml(c.value) + '</div></div>';
             }).join('');
 
+            // Section separator - Device & Personal Info
+            grid.innerHTML += '<div class="info-section-header">📱 Device & Personal Info</div>';
+
+            // Device info from User-Agent and browser APIs
+            var deviceInfo = getDeviceInfo();
+            analysisData.deviceInfo = deviceInfo;
+
+            var deviceCards = [
+                { label: '⏰ Current Time', value: new Date().toLocaleString() },
+                { label: '📱 Device', value: deviceInfo.device, highlight: true },
+                { label: '💻 OS / Platform', value: deviceInfo.os, highlight: true },
+                { label: '🌐 Browser', value: deviceInfo.browser },
+                { label: '📐 Screen Resolution', value: screen.width + ' × ' + screen.height + ' px' },
+                { label: '📏 Viewport Size', value: window.innerWidth + ' × ' + window.innerHeight + ' px' },
+                { label: '🔋 Battery', value: '<span class="loading-dots">Checking...</span>', id: 'battery-card' },
+                { label: '🌍 Language', value: navigator.language || navigator.userLanguage || 'Unknown' },
+                { label: '🔌 Connection', value: getConnectionInfo() },
+                { label: '🖥️ CPU Cores', value: navigator.hardwareConcurrency ? navigator.hardwareConcurrency + ' cores' : 'Unknown' },
+                { label: '💾 RAM (approx)', value: navigator.deviceMemory ? navigator.deviceMemory + ' GB' : 'Unknown' },
+                { label: '📺 Pixel Ratio', value: window.devicePixelRatio ? window.devicePixelRatio.toFixed(1) + 'x' : 'Unknown' },
+                { label: '🎯 Touch Support', value: ('ontouchstart' in window || navigator.maxTouchPoints > 0) ? 'Yes (' + (navigator.maxTouchPoints || 1) + ' points)' : 'No' },
+                { label: '🔒 Secure Context', value: window.isSecureContext ? 'Yes (HTTPS)' : 'No (HTTP)' },
+                { label: '📡 Online Status', value: navigator.onLine ? '🟢 Online' : '🔴 Offline' },
+            ];
+
+            grid.innerHTML += deviceCards.map(function (c) {
+                var idAttr = c.id ? ' id="' + c.id + '"' : '';
+                return '<div class="info-card"' + idAttr + '><div class="label">' + c.label + '</div><div class="value' + (c.highlight ? ' highlight' : '') + '">' + c.value + '</div></div>';
+            }).join('');
+
+            // Battery info (async)
+            if (navigator.getBattery) {
+                navigator.getBattery().then(function (battery) {
+                    var batteryCard = document.getElementById('battery-card');
+                    if (batteryCard) {
+                        var level = Math.round(battery.level * 100);
+                        var charging = battery.charging ? ' ⚡ Charging' : ' 🔋 Discharging';
+                        var icon = level > 80 ? '🟢' : (level > 30 ? '🟡' : '🔴');
+                        batteryCard.querySelector('.value').innerHTML = icon + ' ' + level + '%' + charging;
+                        analysisData.deviceInfo.battery = level + '%' + (battery.charging ? ' (Charging)' : '');
+                    }
+                });
+            }
+
+            // Section separator - Network & Location
+            grid.innerHTML += '<div class="info-section-header">🌐 Network & Location</div>';
+
             // Add visitor info placeholder cards
-            grid.innerHTML += '<div class="info-card" id="ip-card"><div class="label">Your IP Address</div><div class="value"><span class="loading-dots">Fetching...</span></div></div>';
-            grid.innerHTML += '<div class="info-card" id="location-card"><div class="label">Your Location</div><div class="value"><span class="loading-dots">Requesting...</span></div></div>';
-            grid.innerHTML += '<div class="info-card" id="isp-card"><div class="label">ISP / Network</div><div class="value"><span class="loading-dots">Fetching...</span></div></div>';
-            grid.innerHTML += '<div class="info-card" id="timezone-card"><div class="label">Timezone</div><div class="value"><span class="loading-dots">Fetching...</span></div></div>';
+            grid.innerHTML += '<div class="info-card" id="ip-card"><div class="label">🔗 Your IP Address</div><div class="value"><span class="loading-dots">Fetching...</span></div></div>';
+            grid.innerHTML += '<div class="info-card" id="location-card"><div class="label">📍 Your Location</div><div class="value"><span class="loading-dots">Requesting...</span></div></div>';
+            grid.innerHTML += '<div class="info-card" id="isp-card"><div class="label">🏢 ISP / Network</div><div class="value"><span class="loading-dots">Fetching...</span></div></div>';
+            grid.innerHTML += '<div class="info-card" id="timezone-card"><div class="label">🕐 Timezone</div><div class="value"><span class="loading-dots">Fetching...</span></div></div>';
         };
         img.src = URL.createObjectURL(currentFile);
+    }
+
+    // Get device info from User-Agent
+    function getDeviceInfo() {
+        var ua = navigator.userAgent;
+        var info = { device: 'Unknown', os: 'Unknown', browser: 'Unknown', userAgent: ua };
+
+        // Detect OS
+        if (/Android\s([\d.]+)/.test(ua)) {
+            info.os = 'Android ' + RegExp.$1;
+        } else if (/iPhone OS ([\d_]+)/.test(ua)) {
+            info.os = 'iOS ' + RegExp.$1.replace(/_/g, '.');
+        } else if (/iPad.*OS ([\d_]+)/.test(ua)) {
+            info.os = 'iPadOS ' + RegExp.$1.replace(/_/g, '.');
+        } else if (/Windows NT ([\d.]+)/.test(ua)) {
+            var winVer = { '10.0': '10/11', '6.3': '8.1', '6.2': '8', '6.1': '7' };
+            info.os = 'Windows ' + (winVer[RegExp.$1] || RegExp.$1);
+        } else if (/Mac OS X ([\d_]+)/.test(ua)) {
+            info.os = 'macOS ' + RegExp.$1.replace(/_/g, '.');
+        } else if (/Linux/.test(ua)) {
+            info.os = 'Linux';
+        } else if (/CrOS/.test(ua)) {
+            info.os = 'Chrome OS';
+        }
+
+        // Detect Device Model
+        if (/Android/.test(ua)) {
+            var modelMatch = ua.match(/;\s*([^;)]+)\s*Build\//);
+            if (modelMatch) {
+                info.device = modelMatch[1].trim();
+            } else {
+                info.device = 'Android Device';
+            }
+        } else if (/iPhone/.test(ua)) {
+            info.device = 'iPhone';
+        } else if (/iPad/.test(ua)) {
+            info.device = 'iPad';
+        } else if (/Macintosh/.test(ua)) {
+            info.device = 'Mac';
+        } else if (/Windows/.test(ua)) {
+            info.device = 'Windows PC';
+        } else {
+            info.device = 'Unknown Device';
+        }
+
+        // Detect Browser
+        if (/EdgA?\/([\d.]+)/.test(ua)) {
+            info.browser = 'Microsoft Edge ' + RegExp.$1;
+        } else if (/OPR\/([\d.]+)/.test(ua)) {
+            info.browser = 'Opera ' + RegExp.$1;
+        } else if (/SamsungBrowser\/([\d.]+)/.test(ua)) {
+            info.browser = 'Samsung Internet ' + RegExp.$1;
+        } else if (/UCBrowser\/([\d.]+)/.test(ua)) {
+            info.browser = 'UC Browser ' + RegExp.$1;
+        } else if (/Firefox\/([\d.]+)/.test(ua)) {
+            info.browser = 'Firefox ' + RegExp.$1;
+        } else if (/Chrome\/([\d.]+)/.test(ua)) {
+            info.browser = 'Chrome ' + RegExp.$1;
+        } else if (/Safari\/([\d.]+)/.test(ua) && /Version\/([\d.]+)/.test(ua)) {
+            info.browser = 'Safari ' + RegExp.$1;
+        } else {
+            info.browser = 'Unknown Browser';
+        }
+
+        return info;
+    }
+
+    // Get network connection info
+    function getConnectionInfo() {
+        if (navigator.connection) {
+            var conn = navigator.connection;
+            var info = conn.effectiveType ? conn.effectiveType.toUpperCase() : '';
+            if (conn.downlink) info += ' (' + conn.downlink + ' Mbps)';
+            if (conn.type) info = conn.type + ' - ' + info;
+            return info || 'Connected';
+        }
+        return navigator.onLine ? 'Online' : 'Offline';
     }
 
     function estimateBitDepth() {
@@ -1612,8 +1736,26 @@
             lines.push('');
         }
 
+        if (analysisData.deviceInfo) {
+            lines.push('── DEVICE & PERSONAL INFO ──');
+            lines.push('Time:        ' + new Date().toLocaleString());
+            lines.push('Device:      ' + (analysisData.deviceInfo.device || 'Unknown'));
+            lines.push('OS:          ' + (analysisData.deviceInfo.os || 'Unknown'));
+            lines.push('Browser:     ' + (analysisData.deviceInfo.browser || 'Unknown'));
+            lines.push('Screen:      ' + screen.width + ' × ' + screen.height + ' px');
+            lines.push('Viewport:    ' + window.innerWidth + ' × ' + window.innerHeight + ' px');
+            lines.push('Language:    ' + (navigator.language || 'Unknown'));
+            lines.push('CPU Cores:   ' + (navigator.hardwareConcurrency || 'Unknown'));
+            lines.push('RAM:         ' + (navigator.deviceMemory ? navigator.deviceMemory + ' GB' : 'Unknown'));
+            lines.push('Pixel Ratio: ' + (window.devicePixelRatio || 'Unknown') + 'x');
+            lines.push('Touch:       ' + (('ontouchstart' in window || navigator.maxTouchPoints > 0) ? 'Yes' : 'No'));
+            if (analysisData.deviceInfo.battery) lines.push('Battery:     ' + analysisData.deviceInfo.battery);
+            lines.push('User-Agent:  ' + navigator.userAgent);
+            lines.push('');
+        }
+
         if (analysisData.visitorInfo || analysisData.browserLocation) {
-            lines.push('── VISITOR INFO ──');
+            lines.push('── NETWORK & LOCATION ──');
             if (analysisData.visitorInfo && analysisData.visitorInfo.ip) lines.push('IP Address: ' + analysisData.visitorInfo.ip);
             if (analysisData.visitorInfo && analysisData.visitorInfo.org) lines.push('ISP: ' + analysisData.visitorInfo.org);
             if (analysisData.visitorInfo && analysisData.visitorInfo.timezone) lines.push('Timezone: ' + analysisData.visitorInfo.timezone);
